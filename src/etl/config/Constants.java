@@ -25,9 +25,11 @@ public final class Constants {
 	static {
 		delimiters.put("comma", "\\,");
 		delimiters.put("tab", "\\t");
-		delimiters.put("pipe", "|");
-		convertions.put("date", "'%m/%d/%Y'");
+		delimiters.put("pipe", "\\|");
+		convertions.put("date1", "'%m/%d/%Y'"); //07/15/2009
+		convertions.put("date2", "'%M %d, %Y'"); //Oct 17, 2004
 		convertions.put("time", "'%H.%i.%s'");
+		
 	}
 
 	public static String getCurrentMonth() {

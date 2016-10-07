@@ -21,11 +21,16 @@ public class Configurations {
 	public Properties getConfigurations(String fileName, boolean doPrint) throws IOException {
 		InputStream inputStream = this.getClass().getClassLoader().getResourceAsStream(fileName);
 		Properties properties = new Properties();
-		properties.load(inputStream);
-		if (doPrint) {
-			for (Entry<Object, Object> entry : properties.entrySet()) {
-				System.out.println(entry.getKey() + " : " + entry.getValue());
-			}
+		try {
+			properties.load(inputStream);
+			if (doPrint) {
+				for (Entry<Object, Object> entry : properties.entrySet()) {
+					System.out.println(entry.getKey() + " : " + entry.getValue());
+				}
+			}}
+		catch(Exception e){
+			System.err.println("Failed Property Load : " + fileName);
+			throw e;
 		}
 		return properties;
 	}

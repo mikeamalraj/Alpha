@@ -1,10 +1,13 @@
 package etl.core;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Properties;
 import etl.config.Configurations;
 import etl.config.Constants;
@@ -77,39 +80,60 @@ public class Processor {
 			// connection.commit();
 			connection.close();
 		}
-		System.out.println("Completed Successfully ");
+		System.out.println("Completed ... ");
 	}
 
 	private int processTask(String location, String taskName, Properties config, boolean isMonthly,
 			Connection connection, String month) throws Exception {
-		String fileName = location + config.get(taskName).toString();
+		String simpleFileName = config.get(taskName).toString();
+		String fileName = location + simpleFileName;
 		int returnCode = 0;
 		if (isMonthly) {
 			fileName = fileName + month + config.get("fileExtention");
+			simpleFileName = simpleFileName + month;
 		}
+		simpleFileName += config.get("fileExtention");
 		if (isMonthlyLoadCompleted()) { // monthly load 1 time or already done.
 			return 0;
 		}
-		int i = processfile(taskName, config, fileName, connection);
+		int i = processfile(taskName, config, isMonthly ? fileName : location + simpleFileName, connection, isMonthly);
 		System.out.println("Processed : " + fileName + ":  RC [" + i + "]");
+		if (i == 0) {
+			boolean isFileMoved = moveFile(location, simpleFileName);
+			System.out.println("File Moved : " + (isFileMoved ? "success" : "failed"));
+			if (i != 0) {
+				return 1;
+			}
+		} else {
+			System.out.println("File Error: " + fileName);
+			return 1;
+		}
 		return returnCode;
 	}
 
-	private int processfile(String taskName, Properties config, String fileName, Connection connection) {
+	private int processfile(String taskName, Properties config, String fileName, Connection connection,
+			boolean isMonthly) {
 		BufferedReader br = null;
 		try {
 			br = new BufferedReader(new FileReader(fileName));
 			String line = Constants.EMPTY;
 			Configurations conf = new Configurations();
 			Properties tableProperties = conf.getConfigurations(Constants.TABLE_FILE);
+			String columnName = tableProperties.getProperty(taskName + "_Columns");
+			columnName = columnName.replace("|", ",");
 			String create_stmt = "CREATE TABLE if not exists " + tableProperties.getProperty(taskName + "_Name") + " ("
-					+ tableProperties.getProperty(taskName + "_Columns") + ")";
+					+ columnName + ")";
 			System.out.println("CREATE create_stmt : " + create_stmt);
 			connection.prepareStatement(create_stmt).execute();
 			System.out.println(create_stmt);
 			String tablePropFileName = config.getProperty(taskName + "_Table");
 			System.out.println(taskName + " :" + tablePropFileName);
+			int lineNumber = 0;
 			while ((line = br.readLine()) != null) {
+				if (isMonthly && lineNumber == 0) {
+					lineNumber++;
+					continue;
+				}
 				String query = "INSERT INTO " + tableProperties.getProperty(taskName + "_Name") + " values ("
 						+ dumpData(config.getProperty(taskName + "_Table"), line,
 								tableProperties.getProperty(taskName + "_Delimiter"),
@@ -119,11 +143,12 @@ public class Processor {
 				connection.prepareStatement(query).execute();
 				System.out.println("INSERT Completed");
 				if (true) {
-					throw new Exception("Break at 1");
+					// throw new Exception("Break at 1");
 				}
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
+			return 1;
 		} finally {
 			try {
 				if (br != null)
@@ -143,6 +168,16 @@ public class Processor {
 	private boolean isMonthlyLoadCompleted() {
 		// TODO : write logic to compare the already done load and current month
 		// load
+		return false;
+	}
+
+	private boolean moveFile(String fileDir, String fileName) {
+		File afile = new File(fileDir + "\\" + fileName);
+		String[] fileInfo = fileName.split("\\.");
+		SimpleDateFormat date = new SimpleDateFormat("_yyyyMMddHHmmss");
+		if (afile.renameTo(new File(fileDir + "\\Processed\\" + fileInfo[0] + date.format(new Date()) + ".txt"))) {
+			return true;
+		}
 		return false;
 	}
 
