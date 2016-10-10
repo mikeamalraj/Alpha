@@ -13,64 +13,134 @@ import etl.config.Configurations;
 import etl.config.Constants;
 
 public class Processor {
+	private static void message() {
+		System.out.println("************ ETL Process *************");
+		System.out.println("Arguments needs to be valid");
+		System.out.println("Monthly Jobs Needs below arguments \n" + "-M for Monthly \n"
+				+ "-P 'Location_of_Property_File' & \n " + "-I 'Month_of_Load' (Will take Current Month by Default "
+				+ Constants.getCurrentMonth() + ")\n" + "-J 'Job_Name' \n" + "-T 'Target_Directory' \n");
+		System.out.println("Daily Jobs Needs below arguments\n" + "-D for Daily \n"
+				+ " -P 'Location_of_Property_File' \n" + "-J 'Job_Name' \n" + "-T 'Target_Directory' \n");
+		System.out.println(
+				"java -jar Alpha_2Mysql.jar -M -P '/home/vmuser1192/Project/Alpha/resources/' -I '201510' -J AWS");
+		System.out.println("java -jar Alpha_2Mysql.jar -D -P '/home/vmuser1192/Project/Alpha/resources/' -J VIP");
+		System.out.println("************ ETL Process *************");
+	}
+
 	public static void main(String args[]) throws Exception {
-		Processor p = new Processor();
-		p.execute("201510");
-		p.execute();
-	}
-
-	private void execute() throws Exception {
-		// execute(Constants.getCurrentMonth());
-	}
-
-	private void execute(String month) throws Exception {
-		String CURRENT_MONTH = Constants.getCurrentMonth();
-		System.out.println("CURRENT_MONTH [" + CURRENT_MONTH + "], EXE_MONTH [" + month + "]");
-		if (CURRENT_MONTH.equals(month)) {
-			System.out.println("Current Month Jobs not ready. ");
-			System.exit(0);
+		if (args.length == 0) {
+			message();
+		} else {
+			boolean isMonthly = false;
+			boolean isDaily = false;
+			String resourceFileLocation = Constants.EMPTY;
+			String inputMonth = Constants.EMPTY;
+			String job = Constants.EMPTY;
+			String sourceDirectory = Constants.EMPTY;
+			for (int i = 0; i < args.length; i++) {
+				// System.out.println(i + " = " + args[i]);
+				switch (args[i]) {
+				case "-M":
+				case "-m":
+					isMonthly = true;
+					break;
+				case "-D":
+				case "-d":
+					isDaily = true;
+					break;
+				case "-P":
+				case "-p":
+					resourceFileLocation = args[i + 1];
+					break;
+				case "-J":
+				case "-j":
+					job = args[i + 1];
+					break;
+				case "-I":
+				case "-i":
+					inputMonth = args[i + 1];
+					break;
+				case "-s":
+				case "-S":
+					sourceDirectory = args[i + 1];
+					break;
+				}
+			}
+			if ((isMonthly || isDaily) && !(isMonthly && isDaily) && !resourceFileLocation.isEmpty()) {
+				Processor p = new Processor();
+				if (isMonthly && inputMonth.isEmpty()) {
+					inputMonth = Constants.getCurrentMonth();
+				}
+				if (job.isEmpty()) {
+					job = "All";
+				}
+				System.out.println((isMonthly ? "Monthly" : "Daily") + " Job Details");
+				System.out.println("Resource File : " + resourceFileLocation);
+				System.out.println("Job Lis: " + job);
+				System.out.println((isMonthly ? "Input Month : " + inputMonth : ""));
+				p.execute(isMonthly, resourceFileLocation, inputMonth, job, sourceDirectory);
+			} else {
+				message();
+			}
 		}
+	}
+
+	private void execute(boolean isMonthly, String resourceFileLocation, String inputMonth, String job,
+			String sourceDirectory) throws Exception {
 		Connection connection = null;
 		try {
 			Configurations configurations = new Configurations();
-			Properties config = configurations.getConfigurations(Constants.CONFIG_FILE);
-			connection = getConnection(configurations.getConfigurations(config.getProperty(Constants.DB_FILE)));
+			Properties config = configurations.getConfigurations(resourceFileLocation, Constants.CONFIG_FILE);
+			connection = getConnection(
+					configurations.getConfigurations(resourceFileLocation, config.getProperty(Constants.DB_FILE)));
 			// Monthly Load
-			month = month != null ? month : config.getProperty(Constants.LOADED_MONTH);
-			String[] monthlyTask = null;
-			if (null != config.get(Constants.MONTHLY_TASK)) {
-				monthlyTask = config.get(Constants.MONTHLY_TASK).toString().split(Constants.DELIMITER_COMMA);
-			}
-			if (monthlyTask != null && monthlyTask.length > 0) {
-				for (String mT : monthlyTask) {
-					int returnCode = -1;
-					try {
-						returnCode = processTask(config.get("rddLocation").toString(), mT, config, true, connection,
-								month);
-					} catch (Exception e) {
-						throw e;
-					}
-					if (returnCode != 0) {
-						throw new Exception("Invalid return Code [" + returnCode + "] for task [" + mT + "]");
+			if (isMonthly) {
+				inputMonth = inputMonth != null ? inputMonth : config.getProperty(Constants.LOADED_MONTH);
+				String[] monthlyTask = null;
+				if (!job.isEmpty() && !job.equals("All")) {
+					monthlyTask = job.split(Constants.DELIMITER_COMMA);
+				} else if (null != config.get(Constants.MONTHLY_TASK)) {
+					monthlyTask = config.get(Constants.MONTHLY_TASK).toString().split(Constants.DELIMITER_COMMA);
+				}
+				if (monthlyTask != null && monthlyTask.length > 0) {
+					for (String mT : monthlyTask) {
+						int returnCode = -1;
+						try {
+							sourceDirectory = sourceDirectory.isEmpty() ? config.get("rddLocation").toString()
+									: sourceDirectory;
+							returnCode = processTask(resourceFileLocation, sourceDirectory, mT, config, true,
+									connection, inputMonth);
+						} catch (Exception e) {
+							throw e;
+						}
+						if (returnCode != 0 && returnCode != 4) {
+							throw new Exception("Invalid return Code [" + returnCode + "] for task [" + mT + "]");
+						}
 					}
 				}
 			}
 			// Daily Load
-			String[] dailyTask = null;
-			if (null != config.get(Constants.DAILY_TASK)) {
-				dailyTask = config.get(Constants.DAILY_TASK).toString().split(Constants.DELIMITER_COMMA);
-			}
-			if (dailyTask != null && dailyTask.length > 0) {
-				for (String dT : dailyTask) {
-					int returnCode = -1;
-					try {
-						returnCode = processTask(config.get("dailyLocation").toString(), dT, config, false, connection,
-								Constants.EMPTY);
-					} catch (Exception e) {
-						throw e;
-					}
-					if (returnCode != 0) {
-						throw new Exception("Invalid return Code [" + returnCode + "] for task [" + dT + "]");
+			else {
+				String[] dailyTask = null;
+				if (!job.isEmpty() && !job.equals("All")) {
+					dailyTask = job.split(Constants.DELIMITER_COMMA);
+				} else if (null != config.get(Constants.DAILY_TASK)) {
+					dailyTask = config.get(Constants.DAILY_TASK).toString().split(Constants.DELIMITER_COMMA);
+				}
+				if (dailyTask != null && dailyTask.length > 0) {
+					for (String dT : dailyTask) {
+						int returnCode = -1;
+						try {
+							sourceDirectory = sourceDirectory.isEmpty() ? config.get("dailyLocation").toString()
+									: sourceDirectory;
+							returnCode = processTask(resourceFileLocation, sourceDirectory, dT, config, false,
+									connection, Constants.EMPTY);
+						} catch (Exception e) {
+							throw e;
+						}
+						if (returnCode != 0 && returnCode != 4) {
+							throw new Exception("Invalid return Code [" + returnCode + "] for task [" + dT + "]");
+						}
 					}
 				}
 			}
@@ -83,42 +153,53 @@ public class Processor {
 		System.out.println("Completed ... ");
 	}
 
-	private int processTask(String location, String taskName, Properties config, boolean isMonthly,
-			Connection connection, String month) throws Exception {
-		String simpleFileName = config.get(taskName).toString();
-		String fileName = location + simpleFileName;
+	private int processTask(String resourceFileLocation, String sourceDirectory, String taskName, Properties config,
+			boolean isMonthly, Connection connection, String month) throws Exception {
+		File dir = new File(sourceDirectory);
+		int i = 0;
+		for (File file : dir.listFiles()) {
+			if (file.getName().startsWith(taskName)) {
+				i = processTask(resourceFileLocation, sourceDirectory, taskName, config, isMonthly, connection, month,
+						file.getName());
+			}
+		}
+		return i;
+	}
+
+	private int processTask(String resourceFileLocation, String sourceDirectory, String taskName, Properties config,
+			boolean isMonthly, Connection connection, String month, String fileName) throws Exception {
+		System.out.println("processTask : " + taskName);
 		int returnCode = 0;
-		if (isMonthly) {
-			fileName = fileName + month + config.get("fileExtention");
-			simpleFileName = simpleFileName + month;
-		}
-		simpleFileName += config.get("fileExtention");
-		if (isMonthlyLoadCompleted()) { // monthly load 1 time or already done.
-			return 0;
-		}
-		int i = processfile(taskName, config, isMonthly ? fileName : location + simpleFileName, connection, isMonthly);
+		// String simpleFileName = config.get(taskName).toString();
+		// String fileName = location + simpleFileName;
+		// if (isMonthly) {
+		// fileName = fileName + month + config.get("fileExtention");
+		// simpleFileName = simpleFileName + month;
+		// }
+		// simpleFileName += config.get("fileExtention");
+		int i = processfile(resourceFileLocation, taskName, config, fileName, connection, isMonthly);
 		System.out.println("Processed : " + fileName + ":  RC [" + i + "]");
 		if (i == 0) {
-			boolean isFileMoved = moveFile(location, simpleFileName);
+			boolean isFileMoved = moveFile(sourceDirectory, fileName);
 			System.out.println("File Moved : " + (isFileMoved ? "success" : "failed"));
-			if (i != 0) {
+			if (!isFileMoved) {
 				return 1;
 			}
-		} else {
+		} else if (i != 4) {
 			System.out.println("File Error: " + fileName);
 			return 1;
 		}
 		return returnCode;
 	}
 
-	private int processfile(String taskName, Properties config, String fileName, Connection connection,
-			boolean isMonthly) {
+	private int processfile(String resourceFileLocation, String taskName, Properties config, String fileName,
+			Connection connection, boolean isMonthly) {
 		BufferedReader br = null;
 		try {
 			br = new BufferedReader(new FileReader(fileName));
 			String line = Constants.EMPTY;
 			Configurations conf = new Configurations();
-			Properties tableProperties = conf.getConfigurations(Constants.TABLE_FILE);
+			Properties tableProperties = conf.getConfigurations(resourceFileLocation, Constants.TABLE_FILE);
 			String columnName = tableProperties.getProperty(taskName + "_Columns");
 			columnName = columnName.replace("|", ",");
 			String create_stmt = "CREATE TABLE if not exists " + tableProperties.getProperty(taskName + "_Name") + " ("
@@ -135,17 +216,17 @@ public class Processor {
 					continue;
 				}
 				String query = "INSERT INTO " + tableProperties.getProperty(taskName + "_Name") + " values ("
-						+ dumpData(config.getProperty(taskName + "_Table"), line,
+						+ dumpData(resourceFileLocation, config.getProperty(taskName + "_Table"), line,
 								tableProperties.getProperty(taskName + "_Delimiter"),
 								tableProperties.getProperty(taskName + "_Columns"))
 						+ ")";
 				System.out.println("INSERT query : " + query);
 				connection.prepareStatement(query).execute();
 				System.out.println("INSERT Completed");
-				if (true) {
-					// throw new Exception("Break at 1");
-				}
 			}
+		} catch (java.io.FileNotFoundException e) {
+			System.out.println("File skipped (Not Found) : " + fileName);
+			return 4;
 		} catch (Exception e) {
 			e.printStackTrace();
 			return 1;
@@ -160,22 +241,18 @@ public class Processor {
 		return 0;
 	}
 
-	private String dumpData(String columnFile, String data, String delimiter, String columnDef) throws Exception {
-		String values = new DataMapper().getUsageData(columnFile, data, delimiter, columnDef);
-		return values;
-	}
-
-	private boolean isMonthlyLoadCompleted() {
-		// TODO : write logic to compare the already done load and current month
-		// load
-		return false;
+	private String dumpData(String fileLocation, String columnFile, String data, String delimiter, String columnDef)
+			throws Exception {
+		return new DataMapper().getUsageData(fileLocation, columnFile, data, delimiter, columnDef);
 	}
 
 	private boolean moveFile(String fileDir, String fileName) {
-		File afile = new File(fileDir + "\\" + fileName);
-		String[] fileInfo = fileName.split("\\.");
+		File afile = new File(fileDir + "/" + fileName);
+		String[] fileInfo = fileName.split("/.");
 		SimpleDateFormat date = new SimpleDateFormat("_yyyyMMddHHmmss");
-		if (afile.renameTo(new File(fileDir + "\\Processed\\" + fileInfo[0] + date.format(new Date()) + ".txt"))) {
+		String newName = fileDir + "Processed/" + fileInfo[0] + date.format(new Date()) + ".txt";
+		System.out.println("New Processed File Location : " + newName);
+		if (afile.renameTo(new File(newName))) {
 			return true;
 		}
 		return false;
