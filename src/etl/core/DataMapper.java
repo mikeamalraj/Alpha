@@ -9,10 +9,10 @@ import etl.config.Configurations;
 import etl.config.Constants;
 
 public class DataMapper {
-	public String getUsageData(String columnFileName, String data, String delimiter, String columnDef)
+	public String getUsageData(String fileLocation, String columnFileName, String data, String delimiter, String columnDef)
 			throws Exception {
 		Map<String, String> dataMap = getObject(data, delimiter,
-				new Configurations().getConfigurations(columnFileName));
+				new Configurations().getConfigurations(fileLocation, columnFileName));
 		// String usageType = dataMap.get("Usage_Type");
 		// String roamingInd = dataMap.get("Overseas_Ind");
 		// String dataUsed = dataMap.get("Usage_Count");
