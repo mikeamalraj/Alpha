@@ -31,7 +31,8 @@ public final class Constants {
 		convertions.put("time", "'%H.%i.%s'");
 		
 	}
-
+	
+	/** The getCurrentMonth method returns the current month in the specified format.*/ 
 	public static String getCurrentMonth() {
 		DateFormat dateFormat = new SimpleDateFormat("YYYYMM");
 		return dateFormat.format(new Date());

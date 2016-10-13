@@ -16,7 +16,7 @@ public class Configurations {
 		}
 	}
 
-	private Properties getConfigurations(String fileName) throws IOException {
+	public Properties getConfigurations(String fileName) throws IOException {
 		return getConfigurations(fileName, false);
 	}
 
@@ -25,9 +25,9 @@ public class Configurations {
 	}
 
 	public Properties getConfigurations(String fileLocation, String fileName, boolean doPrint) throws IOException {
-		InputStream inputStream = new FileInputStream(new File(fileLocation + fileName));
 		Properties properties = new Properties();
 		try {
+			InputStream inputStream = new FileInputStream(new File(fileLocation + fileName));
 			properties.load(inputStream);
 			if (doPrint) {
 				for (Entry<Object, Object> entry : properties.entrySet()) {
@@ -35,7 +35,7 @@ public class Configurations {
 				}
 			}
 		} catch (Exception e) {
-			System.err.println("Failed Property Load : " + fileName);
+			System.err.println("Failed Property Load : " + fileName + ":" + e);
 			throw e;
 		}
 		return properties;

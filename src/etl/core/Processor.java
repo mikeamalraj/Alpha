@@ -11,8 +11,14 @@ import java.util.Date;
 import java.util.Properties;
 import etl.config.Configurations;
 import etl.config.Constants;
+import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
 
 public class Processor {
+	/** The Logger object is initialized here(in order to create log file for Processor class) based on Processor class .*/  
+	static Logger logger = Logger.getLogger(Processor.class);
+	
+	/** The message method prints information about the command line arguments that needs to be passed while running the program.*/ 
 	private static void message() {
 		System.out.println("************ ETL Process *************");
 		System.out.println("Arguments needs to be valid");
@@ -27,18 +33,23 @@ public class Processor {
 		System.out.println("************ ETL Process *************");
 	}
 
+	/** The main method gets the command line arguments informations. If all needed informations are passed then it will call execute method for processing. Otherwise it will call message method */ 
 	public static void main(String args[]) throws Exception {
+		
+		/** If no argument is passed - call message method */
 		if (args.length == 0) {
 			message();
 		} else {
+			/** Initializing all variables */
 			boolean isMonthly = false;
 			boolean isDaily = false;
 			String resourceFileLocation = Constants.EMPTY;
 			String inputMonth = Constants.EMPTY;
 			String job = Constants.EMPTY;
 			String sourceDirectory = Constants.EMPTY;
+			
+			/** Assigning command line information to corresponding variable*/
 			for (int i = 0; i < args.length; i++) {
-				// System.out.println(i + " = " + args[i]);
 				switch (args[i]) {
 				case "-M":
 				case "-m":
@@ -66,14 +77,20 @@ public class Processor {
 					break;
 				}
 			}
+			
+			/** At a time either Daily or Monthly data will be processed - if configuration files location is provided. Otherwise message method will be called */
 			if ((isMonthly || isDaily) && !(isMonthly && isDaily) && !resourceFileLocation.isEmpty()) {
 				Processor p = new Processor();
+				
+				/** Configuring Log4j properties */
+				PropertyConfigurator.configure( resourceFileLocation + "Log4j.properties");
 				if (isMonthly && inputMonth.isEmpty()) {
 					inputMonth = Constants.getCurrentMonth();
 				}
 				if (job.isEmpty()) {
 					job = "All";
 				}
+				logger.info( (isMonthly ? "************************** Monthly Job is executed **************************" : "************************** Daily Job is executed **************************"));
 				System.out.println((isMonthly ? "Monthly" : "Daily") + " Job Details");
 				System.out.println("Resource File : " + resourceFileLocation);
 				System.out.println("Job Lis: " + job);
@@ -84,25 +101,37 @@ public class Processor {
 			}
 		}
 	}
-
+	
+	/** The execute method reads configuration files, basic properties and calls processTask method for further execution.*/
+	
 	private void execute(boolean isMonthly, String resourceFileLocation, String inputMonth, String job,
 			String sourceDirectory) throws Exception {
 		Connection connection = null;
 		try {
 			Configurations configurations = new Configurations();
+			/** Reading configurations from config.properties file */
 			Properties config = configurations.getConfigurations(resourceFileLocation, Constants.CONFIG_FILE);
+			
+			/** Reading configurations from localDB.properties file */
 			connection = getConnection(
 					configurations.getConfigurations(resourceFileLocation, config.getProperty(Constants.DB_FILE)));
-			// Monthly Load
+			
+			/** The monthly based load is performed here.*/
 			if (isMonthly) {
 				inputMonth = inputMonth != null ? inputMonth : config.getProperty(Constants.LOADED_MONTH);
 				String[] monthlyTask = null;
+				
+				/** Getting the information of what all are the monthly job(s) to be performed */
 				if (!job.isEmpty() && !job.equals("All")) {
 					monthlyTask = job.split(Constants.DELIMITER_COMMA);
 				} else if (null != config.get(Constants.MONTHLY_TASK)) {
 					monthlyTask = config.get(Constants.MONTHLY_TASK).toString().split(Constants.DELIMITER_COMMA);
 				}
+				
+				/** If at least one monthly job is available then below code will be executed. */
 				if (monthlyTask != null && monthlyTask.length > 0) {
+					
+					/** Calling processTask method in loop for each type of monthly task. */
 					for (String mT : monthlyTask) {
 						int returnCode = -1;
 						try {
@@ -119,7 +148,7 @@ public class Processor {
 					}
 				}
 			}
-			// Daily Load
+			/** The daily based load is performed here.*/
 			else {
 				String[] dailyTask = null;
 				if (!job.isEmpty() && !job.equals("All")) {
@@ -128,6 +157,8 @@ public class Processor {
 					dailyTask = config.get(Constants.DAILY_TASK).toString().split(Constants.DELIMITER_COMMA);
 				}
 				if (dailyTask != null && dailyTask.length > 0) {
+					
+					/** Calling processTask method in loop for each type of daily task. */
 					for (String dT : dailyTask) {
 						int returnCode = -1;
 						try {
@@ -153,52 +184,61 @@ public class Processor {
 		System.out.println("Completed ... ");
 	}
 
+	/** This processTask method reads all files in the given directory. If matching file is found in that directory corresponding to the task then another processTask method will be called for processing the matching file. */
 	private int processTask(String resourceFileLocation, String sourceDirectory, String taskName, Properties config,
 			boolean isMonthly, Connection connection, String month) throws Exception {
 		File dir = new File(sourceDirectory);
 		int i = 0;
 		for (File file : dir.listFiles()) {
-			if (file.getName().startsWith(taskName)) {
+			if (file.getName().startsWith(config.get(taskName).toString())) {
 				i = processTask(resourceFileLocation, sourceDirectory, taskName, config, isMonthly, connection, month,
-						file.getName());
+						file.getName());	
 			}
 		}
 		return i;
 	}
 
+	/** This processTask method calls the processfile method for reading the content of the file. If file has been read successfully then it will call moveFile method to move the processed file into sub directory (Processed)  */
 	private int processTask(String resourceFileLocation, String sourceDirectory, String taskName, Properties config,
 			boolean isMonthly, Connection connection, String month, String fileName) throws Exception {
 		System.out.println("processTask : " + taskName);
 		int returnCode = 0;
-		// String simpleFileName = config.get(taskName).toString();
-		// String fileName = location + simpleFileName;
-		// if (isMonthly) {
-		// fileName = fileName + month + config.get("fileExtention");
-		// simpleFileName = simpleFileName + month;
-		// }
-		// simpleFileName += config.get("fileExtention");
-		int i = processfile(resourceFileLocation, taskName, config, fileName, connection, isMonthly);
+		
+		/** Calling the processfile method for reading the content of the file and writing into database */
+		int i = processfile(resourceFileLocation, sourceDirectory, taskName, config, fileName, connection, isMonthly);
 		System.out.println("Processed : " + fileName + ":  RC [" + i + "]");
+		
+		/** If file has been processed successfully then the below code will move the processed file into sub directory. */
 		if (i == 0) {
+			logger.info( fileName + " file processed successfully!");
 			boolean isFileMoved = moveFile(sourceDirectory, fileName);
 			System.out.println("File Moved : " + (isFileMoved ? "success" : "failed"));
+			logger.info( fileName + " file : " + (isFileMoved ? " moved successfully!" : "move failed!"));
 			if (!isFileMoved) {
 				return 1;
 			}
+		
+		/** If file is not processed successfully then the below code will print the error type. */
 		} else if (i != 4) {
-			System.out.println("File Error: " + fileName);
+			System.out.println(": File Error" + fileName);
+			logger.error( fileName + " file not processed! Error in file" );
 			return 1;
 		}
 		return returnCode;
 	}
 
-	private int processfile(String resourceFileLocation, String taskName, Properties config, String fileName,
+	/** The processfile method reads the file and inserts the file content into corresponding table. */
+	
+	private int processfile(String resourceFileLocation, String sourceDirectory, String taskName, Properties config, String fileName,
 			Connection connection, boolean isMonthly) {
+		String absoluteFileName= sourceDirectory + fileName;
 		BufferedReader br = null;
 		try {
-			br = new BufferedReader(new FileReader(fileName));
+			br = new BufferedReader(new FileReader(absoluteFileName));
 			String line = Constants.EMPTY;
 			Configurations conf = new Configurations();
+			
+			/** Reading configurations from table.properties file and fetching columns corresponding to table*/
 			Properties tableProperties = conf.getConfigurations(resourceFileLocation, Constants.TABLE_FILE);
 			String columnName = tableProperties.getProperty(taskName + "_Columns");
 			columnName = columnName.replace("|", ",");
@@ -210,11 +250,14 @@ public class Processor {
 			String tablePropFileName = config.getProperty(taskName + "_Table");
 			System.out.println(taskName + " :" + tablePropFileName);
 			int lineNumber = 0;
+			
+			/** Reading each line in loop from the file and inserting the same into the table*/
 			while ((line = br.readLine()) != null) {
 				if (isMonthly && lineNumber == 0) {
 					lineNumber++;
 					continue;
 				}
+				
 				String query = "INSERT INTO " + tableProperties.getProperty(taskName + "_Name") + " values ("
 						+ dumpData(resourceFileLocation, config.getProperty(taskName + "_Table"), line,
 								tableProperties.getProperty(taskName + "_Delimiter"),
@@ -224,8 +267,10 @@ public class Processor {
 				connection.prepareStatement(query).execute();
 				System.out.println("INSERT Completed");
 			}
+		/** If not able to read and insert the file content into table then below code will be executed.*/
 		} catch (java.io.FileNotFoundException e) {
 			System.out.println("File skipped (Not Found) : " + fileName);
+			logger.error( fileName + " file not processed! File not found!" );
 			return 4;
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -241,11 +286,13 @@ public class Processor {
 		return 0;
 	}
 
+	/** The dumpData method will return records (or columns) corresponding to the each line in the file. */
 	private String dumpData(String fileLocation, String columnFile, String data, String delimiter, String columnDef)
 			throws Exception {
-		return new DataMapper().getUsageData(fileLocation, columnFile, data, delimiter, columnDef);
+				return new DataMapper().getUsageData(fileLocation, columnFile, data, delimiter, columnDef);
 	}
-
+	
+	/** The moveFile moves the processed file into sub (Processed) folder. */
 	private boolean moveFile(String fileDir, String fileName) {
 		File afile = new File(fileDir + "/" + fileName);
 		String[] fileInfo = fileName.split("/.");
@@ -257,7 +304,8 @@ public class Processor {
 		}
 		return false;
 	}
-
+	
+	/** The getConnection method will connect to the database. */
 	public Connection getConnection(Properties properties) throws Exception {
 		Class.forName((String) properties.get("driver"));
 		Connection connection = null;
