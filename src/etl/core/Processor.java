@@ -203,7 +203,7 @@ public class Processor {
 			boolean isMonthly, Connection connection, String month, String fileName) throws Exception {
 		System.out.println("processTask : " + taskName);
 		int returnCode = 0;
-		
+			
 		/** Calling the processfile method for reading the content of the file and writing into database */
 		int i = processfile(resourceFileLocation, sourceDirectory, taskName, config, fileName, connection, isMonthly);
 		System.out.println("Processed : " + fileName + ":  RC [" + i + "]");
@@ -212,7 +212,7 @@ public class Processor {
 		if (i == 0) {
 			logger.info( fileName + " file processed successfully!");
 			boolean isFileMoved = moveFile(sourceDirectory, fileName);
-			System.out.println("File Moved : " + (isFileMoved ? "success" : "failed"));
+			//System.out.println("File Moved : " + (isFileMoved ? "success" : "failed"));
 			logger.info( fileName + " file : " + (isFileMoved ? " moved successfully!" : "move failed!"));
 			if (!isFileMoved) {
 				return 1;
@@ -220,7 +220,7 @@ public class Processor {
 		
 		/** If file is not processed successfully then the below code will print the error type. */
 		} else if (i != 4) {
-			System.out.println(": File Error" + fileName);
+			//System.out.println(": File Error" + fileName);
 			logger.error( fileName + " file not processed! Error in file" );
 			return 1;
 		}
